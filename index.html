@@ -313,16 +313,18 @@ function sendNotif(task, type, note=''){
   if(type==='new'){
     subject=`Nueva tarea asignada: ${task.name}`;
     body=`Hola ${assignee.name},\n\nSe te ha asignado una nueva tarea en el panel de gestión Fedefarma TI:\n\n  Tarea: ${task.name}\n  Importancia: ${task.importance}\n  Categoría: ${task.category||'—'}\n  Duración estimada: ${task.weeks||'—'} semana(s)\n  Inicio: ${fmtDate(task.startDate)}\n${assigner?'\n  Asignada por: '+assigner.name:''}\n${task.notes?'\n  Notas: '+task.notes:''}\n\nSaludos,\nDepartamento de Organización · Fedefarma TI`;
+    console.log('📧 EMAIL ENVIADO:',{to:assignee.email,subject,body});
+    window.open(`mailto:${assignee.email}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`,'_blank');
   }else if(type==='status'){
     subject=`Actualización de estado: ${task.name}`;
     const recipients=[assignee];
     if(assigner&&assigner.id!==assignee.id)recipients.push(assigner);
     const emails=recipients.map(p=>p.email).join(',');
     body=`Hola,\n\nEl estado de la siguiente tarea ha cambiado:\n\n  Tarea: ${task.name}\n  Nuevo estado: ${STATUS_LABELS[task.status]}\n  Asignada a: ${assignee.name}\n${assigner?'  Asignada por: '+assigner.name:''}\n${note?'\n  Nota: '+note:''}\n\nSaludos,\nDepartamento de Organización · Fedefarma TI`;
+    console.log('📧 EMAIL ENVIADO:',{to:emails,subject,body});
     window.open(`mailto:${emails}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`,'_blank');
     return;
   }
-  window.open(`mailto:${assignee.email}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`,'_blank');
 }
 
 // ── MODAL ──────────────────────────────────────────────────────────────────
@@ -525,9 +527,13 @@ function rTab(){
   else if(tab==='ahorros')el.innerHTML=bAh();
   else if(tab==='servicios')el.innerHTML=bSer();
   setTimeout(()=>{
-    if(tab==='gráficos')iGraf();
-    if(tab==='ahorros')iAh();
-  },80);
+    if(tab==='gráficos'){
+      if(document.getElementById('cs'))iGraf();
+    }
+    if(tab==='ahorros'){
+      if(document.getElementById('csa'))iAh();
+    }
+  },100);
 }
 
 // ── RESUMEN ────────────────────────────────────────────────────────────────
@@ -632,11 +638,15 @@ function bTar(){
       <div><label>Coste (€)</label><input id="tcost" type="number" min="0" placeholder="0"></div>
     </div>
     <div class="fg g3">
+      <div><label>Fecha de inicio</label><input id="tstart" type="date"></div>
+      <div><label>Duración (semanas)</label><input id="tweeks" type="number" min="1" max="52" placeholder="Ej: 2"></div>
+      <div><label>Coste (€)</label><input id="tcost" type="number" min="0" placeholder="0"></div>
+    </div>
+    <div class="fg g3">
       <div><label>Ahorro manual (€)</label><input id="tsv" type="number" min="0" placeholder="0"></div>
       <div><label>Fecha del ahorro</label><input id="tsv_date" type="date"></div>
-      <div><label>Duración (semanas)</label><input id="tweeks" type="number" min="1" max="52" placeholder="Ej: 2"></div>
+      <div style="margin-bottom:8px"><label>Notas</label><input id="tno" placeholder="Opcional"></div>
     </div>
-    <div style="margin-bottom:8px"><label>Notas</label><input id="tno" placeholder="Opcional"></div>
     <div style="display:flex;gap:7px">
       <button class="btn btn-acc btn-sm" onclick="addTask()">Guardar y notificar</button>
       <button class="btn btn-sm" onclick="tgT()">Cancelar</button>
@@ -774,48 +784,75 @@ function iAh(){
   
   const fn={size:11,family:"'Plus Jakarta Sans',sans-serif"};
   const ctx=document.getElementById('csa');
-  if(CH.sa){CH.sa.destroy();}
   
-  CH.sa=new Chart(ctx,{
-    type:'line',
-    data:{
-      labels:monthLabels,
-      datasets:[{
-        label:'Ahorro acumulado',
-        data:acum,
-        borderColor:'#16a34a',
-        backgroundColor:'rgba(22,163,74,0.1)',
-        borderWidth:3,
-        fill:true,
-        tension:0.4,
-        pointRadius:6,
-        pointBackgroundColor:'#16a34a',
-        pointBorderColor:'#fff',
-        pointBorderWidth:2,
-        spanGaps:false
-      }]
-    },
-    options:{
-      responsive:true,
-      maintainAspectRatio:false,
-      interaction:{mode:'index',intersect:false},
-      plugins:{
-        legend:{position:'bottom',labels:{font:fn,padding:15,color:'#8c909e'}},
-        tooltip:{backgroundColor:'rgba(0,0,0,0.8)',padding:10,titleFont:{size:12},bodyFont:{size:11},callbacks:{label:c=>{if(c.parsed.y===null)return'';return fmt(c.parsed.y)}}}
+  // Destruir gráfico anterior si existe
+  if(CH.sa){
+    try{CH.sa.destroy();}catch(e){}
+  }
+  
+  // Crear nueva gráfica
+  try{
+    CH.sa=new Chart(ctx,{
+      type:'line',
+      data:{
+        labels:monthLabels,
+        datasets:[{
+          label:'Ahorro acumulado',
+          data:acum,
+          borderColor:'#16a34a',
+          backgroundColor:'rgba(22,163,74,0.1)',
+          borderWidth:3,
+          fill:true,
+          tension:0.4,
+          pointRadius:6,
+          pointBackgroundColor:'#16a34a',
+          pointBorderColor:'#fff',
+          pointBorderWidth:2,
+          spanGaps:true
+        }]
       },
-      scales:{
-        y:{
-          beginAtZero:true,
-          ticks:{font:fn,color:'#8c909e',callback:v=>fmt(v)},
-          grid:{color:'rgba(0,0,0,0.05)',drawBorder:false}
+      options:{
+        responsive:true,
+        maintainAspectRatio:false,
+        interaction:{mode:'index',intersect:false},
+        plugins:{
+          legend:{position:'bottom',labels:{font:fn,padding:15,color:'#8c909e'}},
+          tooltip:{
+            backgroundColor:'rgba(0,0,0,0.8)',
+            padding:10,
+            titleFont:{size:12},
+            bodyFont:{size:11},
+            callbacks:{
+              label:function(c){
+                if(c.parsed.y===null||c.parsed.y===undefined)return'';
+                return 'Acumulado: '+fmt(c.parsed.y);
+              }
+            }
+          }
         },
-        x:{
-          ticks:{font:fn,color:'#8c909e'},
-          grid:{display:false,drawBorder:false}
+        scales:{
+          y:{
+            beginAtZero:true,
+            ticks:{
+              font:fn,
+              color:'#8c909e',
+              callback:function(v){
+                if(v===0)return'€0';
+                return fmt(v);
+              }
+            },
+            grid:{color:'rgba(0,0,0,0.05)',drawBorder:false}
+          },
+          x:{
+            ticks:{font:fn,color:'#8c909e'},
+            grid:{display:false,drawBorder:false}
+          }
         }
       }
-    }
-  });
+    });
+  }catch(e){
+    console.error('Error al crear gráfica de ahorros:',e);
+  }
 }
 
 // ── SERVICIOS ──────────────────────────────────────────────────────────────
@@ -873,33 +910,62 @@ function setF(t,v){if(t==='s')fSt=v;else fPr=v;rTab()}
 
 function addTask(){
   const n=(document.getElementById('tn').value||'').trim();
-  if(!n)return;
+  if(!n){alert('Por favor, ingresa el nombre de la tarea');return;}
+  
   const person=document.getElementById('tp').value;
   const assignedBy=document.getElementById('tab2').value;
-  const startDate=document.getElementById('tstart').value||null;
-  const weeks=Number(document.getElementById('tweeks').value)||null;
-  const cost=Number(document.getElementById('tcost').value)||0;
-  const saving=Number(document.getElementById('tsv').value)||0;
-  const savingDate=document.getElementById('tsv_date').value||null;
+  const startDate=document.getElementById('tstart')?.value||null;
+  const weeks=Number(document.getElementById('tweeks')?.value)||null;
+  const cost=Number(document.getElementById('tcost')?.value)||0;
+  const saving=Number(document.getElementById('tsv')?.value)||0;
+  const savingDate=document.getElementById('tsv_date')?.value||null;
   const status=document.getElementById('ts').value;
+  
   const newTask={
-    id:uid(),name:n,person,assignedBy,
+    id:uid(),
+    name:n,
+    person,
+    assignedBy,
     importance:document.getElementById('ti').value,
-    status,category:document.getElementById('tc2').value,
-    cost,saving,savingDate,startDate,weeks,
+    status,
+    category:document.getElementById('tc2').value,
+    cost,
+    saving,
+    savingDate,
+    startDate,
+    weeks,
     notes:(document.getElementById('tno').value||'').trim(),
     history:[{status,date:new Date().toISOString(),by:MB.find(x=>x.id===assignedBy)?.name||'Sistema',note:'Tarea creada'}]
   };
+  
   tasks.push(newTask);
-  sv('fdp_tasks',tasks);addT=false;render();
+  sv('fdp_tasks',tasks);
+  addT=false;
+  render();
   sendNotif(newTask,'new');
+  alert('✓ Tarea creada correctamente. Email enviado a '+MB.find(x=>x.id===person)?.email);
 }
 
 function addSv(){
   const n=(document.getElementById('sn').value||'').trim();
-  if(!n)return;
-  services.push({name:n,provider:(document.getElementById('spv').value||'').trim()||'—',cost:Number(document.getElementById('sc2').value)||0,saving:Number(document.getElementById('ssv').value)||0,savingDate:document.getElementById('ssv_date').value||null,type:document.getElementById('sty').value,status:document.getElementById('sst').value,notes:(document.getElementById('sno').value||'').trim()});
-  sv('fdp_services',services);addS=false;rTab();
+  if(!n){alert('Por favor, ingresa el nombre del servicio');return;}
+  
+  const newService={
+    name:n,
+    provider:(document.getElementById('spv').value||'').trim()||'—',
+    cost:Number(document.getElementById('sc2').value)||0,
+    saving:Number(document.getElementById('ssv').value)||0,
+    savingDate:document.getElementById('ssv_date').value||null,
+    type:document.getElementById('sty').value,
+    status:document.getElementById('sst').value,
+    notes:(document.getElementById('sno').value||'').trim()
+  };
+  
+  services.push(newService);
+  sv('fdp_services',services);
+  addS=false;
+  rTab();
+  alert('✓ Servicio añadido correctamente');
 }
 
 function chSt(id,v){
